@@ -58,25 +58,25 @@ resources:
 
   # AWS Providers for the 4 accounts
   nonPciControlProvider:
-    type: aws:providers:Provider
+    type: pulumi:providers:aws
     properties:
       region: eu-west-1
       assumeRole:
         roleArn: arn:aws:iam::${nonPciControlAccount.id}:role/OrganizationAccountAccessRole
   nonPciAppProvider:
-    type: aws:providers:Provider
+    type: pulumi:providers:aws
     properties:
       region: eu-west-1
       assumeRole:
         roleArn: arn:aws:iam::${nonPciAppAccount.id}:role/OrganizationAccountAccessRole
   pciControlProvider:
-    type: aws:providers:Provider
+    type: pulumi:providers:aws
     properties:
       region: eu-west-1
       assumeRole:
-        roleArn: arn:aws:iam::${pciControllAccount.id}:role/OrganizationAccountAccessRole
+        roleArn: arn:aws:iam::${pciControlAccount.id}:role/OrganizationAccountAccessRole
   pciAppProvider:
-    type: aws:providers:Provider
+    type: pulumi:providers:aws
     properties:
       region: eu-west-1
       assumeRole:
@@ -90,18 +90,18 @@ resources:
     properties:
       name: non-pci-repository
     options:
-      provider: ${nonPciProvider}
+      provider: ${nonPciControlProvider}
 
   # S3 bucket for artefacts
   nonPciControlS3:
     type: aws:s3:Bucket
-    properties:
-      name: non-pci-control-s3
     options:
-      provider: ${nonPciProvider}
+      provider: ${nonPciControlProvider}
 
   nonPciCodeBuildRole:
     type: aws:iam:Role
+    options:
+      provider: ${nonPciControlProvider}
     properties:
       assumeRolePolicy: |
         {
@@ -171,7 +171,7 @@ resources:
         type: GITHUB
         location: "https://github.com/LTheobald/dummy-app.git"
 
-  nonPciEcsCluster:
+  nonPciControlEcsCluster:
     type: aws:ecs:Cluster
     properties:
       name: non-pci-ecs-cluster
@@ -231,6 +231,8 @@ resources:
       provider: ${pciControlProvider}
 
 outputs:
-  devAccountId: ${devAccount.id}
-  prodAccountId: ${prodAccount.id}
-  organizationId: ${myOrg.id}
+  nonPciControlAccountId: ${nonPciControlAccount.id}
+  nonPciAppAccountId: ${nonPciAppAccount.id}
+  pciControlAccountId: ${pciControlAccount.id}
+  pciAppAccountId: ${pciAppAccount.id}
+  organizationId: ${iacTestOrg.id}
