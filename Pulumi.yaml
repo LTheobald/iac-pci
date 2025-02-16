@@ -1,0 +1,106 @@
+name: iac-pci
+description: Testing IAC using Pulumi to emulate a PCI environment
+runtime: yaml
+
+resources:
+
+  # AWS Organisation
+  iacTestOrg:
+    type: aws:organizations:Organization
+    properties:
+      featureSet: "ALL"
+
+  # Create an Organizational Unit (OU) for the non-PCI realm
+  nonPciOU:
+    type: aws:organizations:OrganizationalUnit
+    properties:
+      name: "Non-PCI"
+      parentId: ${iacTestOrg.roots[0].id}
+
+  # Create an Organizational Unit (OU) for PCI realm
+  pciOU:
+    type: aws:organizations:OrganizationalUnit
+    properties:
+      name: "Production"
+      parentId: ${iacTestOrg.roots[0].id}
+
+  # Create 2 accounts under the non-PCI OU. One for the 'control' suite. One for an app.
+  nonPciControlAccount:
+    type: aws:organizations:Account
+    properties:
+      name: "Non-PCI Control Account"
+      email: "non-pci-control+lee@ltheobald.co.uk"
+      roleName: "OrganizationAccountAccessRole"
+      parentId: ${nonPciOU.id}
+  nonPciAppAccount:
+    type: aws:organizations:Account
+    properties:
+      name: "Non-PCI App Account"
+      email: "non-pci-app+lee@ltheobald.co.uk"
+      roleName: "OrganizationAccountAccessRole"
+      parentId: ${nonPciOU.id}
+      
+  # Create 2 accounts under the PCI OU. One for the 'control' suite. One for an app.
+  pciControlAccount:
+    type: aws:organizations:Account
+    properties:
+      name: "PCI Control Account"
+      email: "pci-control+lee@ltheobald.co.uk"
+      roleName: "OrganizationAccountAccessRole"
+      parentId: ${pciOU.id}
+  pciAppAccount:
+    type: aws:organizations:Account
+    properties:
+      name: "PCI App Account"
+      email: "pci-app+lee@ltheobald.co.uk"
+      roleName: "OrganizationAccountAccessRole"
+      parentId: ${pciOU.id}
+
+  # AWS Providers for the 4 accounts
+  nonPciControlProvider:
+    type: aws:providers:Provider
+    properties:
+      region: eu-west-1
+      assumeRole:
+        roleArn: arn:aws:iam::${nonPciControlAccount.id}:role/OrganizationAccountAccessRole
+  nonPciAppProvider:
+    type: aws:providers:Provider
+    properties:
+      region: eu-west-1
+      assumeRole:
+        roleArn: arn:aws:iam::${nonPciAppAccount.id}:role/OrganizationAccountAccessRole
+  pciControlProvider:
+    type: aws:providers:Provider
+    properties:
+      region: eu-west-1
+      assumeRole:
+        roleArn: arn:aws:iam::${pciControllAccount.id}:role/OrganizationAccountAccessRole
+  pciAppProvider:
+    type: aws:providers:Provider
+    properties:
+      region: eu-west-1
+      assumeRole:
+        roleArn: arn:aws:iam::${pciAppAccount.id}:role/OrganizationAccountAccessRole
+
+  
+  # Setup the PCI control plan
+  # ECR Repository in Development Account
+  nonPciControllECR:
+    type: aws:ecr:Repository
+    properties:
+      name: non-pci-repository
+    options:
+      provider: ${nonPciProvider}
+
+  # ECR Repository in Production Account
+  pciControlECR:
+    type: aws:ecr:Repository
+    properties:
+      name: pci-repository
+    options:
+      provider: ${pciControlProvider}
+
+outputs:
+  devAccountId: ${devAccount.id}
+  prodAccountId: ${prodAccount.id}
+  organizationId: ${myOrg.id}
