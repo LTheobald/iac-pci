@@ -1,0 +1,66 @@
+  # 🔹 AWS CodePipeline IAM Role
+  codePipelineRole:
+    type: aws:iam:Role
+    properties:
+      assumeRolePolicy: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "codepipeline.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        }
+
+  # 🔹 AWS CodePipeline for CI/CD
+  codePipeline:
+    type: aws:codepipeline:Pipeline
+    properties:
+      name: java-app-pipeline
+      roleArn: ${codePipelineRole.arn}
+      artifactStore:
+        type: S3
+        location: ${artifactBucket.id}
+      stages:
+        - name: Source
+          actions:
+            - name: FetchSource
+              category: Source
+              owner: AWS
+              provider: CodeCommit
+              version: "1"
+              configuration:
+                RepositoryName: ${sourceRepo.repositoryName}
+                BranchName: "main"
+              outputArtifacts:
+                - name: SourceArtifact
+        - name: Build
+          actions:
+            - name: BuildDockerImage
+              category: Build
+              owner: AWS
+              provider: CodeBuild
+              version: "1"
+              inputArtifacts:
+                - name: SourceArtifact
+              configuration:
+                ProjectName: ${codeBuildProject.name}
+              outputArtifacts:
+                - name: BuildArtifact
+        - name: Deploy
+          actions:
+            - name: DeployToECS
+              category: Deploy
+              owner: AWS
+              provider: ECS
+              version: "1"
+              inputArtifacts:
+                - name: BuildArtifact
+              configuration:
+                ClusterName: ${ecsCluster.name}
+                ServiceName: ${ecsService.name}
+                FileName: imagedefinitions.json

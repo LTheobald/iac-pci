@@ -83,8 +83,8 @@ resources:
         roleArn: arn:aws:iam::${pciAppAccount.id}:role/OrganizationAccountAccessRole
 
   
-  # Setup the PCI control plan
-  # ECR Repository in Development Account
+  # Setup the Non-PCI control plane
+  # ECR Repository
   nonPciControllECR:
     type: aws:ecr:Repository
     properties:
@@ -92,7 +92,137 @@ resources:
     options:
       provider: ${nonPciProvider}
 
-  # ECR Repository in Production Account
+  # S3 bucket for artefacts
+  nonPciControlS3:
+    type: aws:s3:Bucket
+    properties:
+      name: non-pci-control-s3
+    options:
+      provider: ${nonPciProvider}
+
+  nonPciCodeBuildRole:
+    type: aws:iam:Role
+    properties:
+      assumeRolePolicy: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "codebuild.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        }
+
+  # 🔹 IAM Policy for CodeBuild (Allow access to ECR, S3, and ECS)
+  nonPciCodeBuildPolicy:
+    type: aws:iam:RolePolicy
+    options:
+      provider: ${nonPciControlProvider}
+    properties:
+      role: ${nonPciCodeBuildRole.id}
+      policy: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "ecr:GetAuthorizationToken",
+                "ecr:BatchCheckLayerAvailability",
+                "ecr:PutImage",
+                "ecr:InitiateLayerUpload",
+                "ecr:UploadLayerPart",
+                "ecr:CompleteLayerUpload"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Effect": "Allow",
+              "Action": ["s3:*"],
+              "Resource": "${nonPciControlS3.arn}/*"
+            }
+          ]
+        }
+
+  # 🔹 CodeBuild Project for Java & Docker Image Build
+  nonPciCodeBuildProject:
+    type: aws:codebuild:Project
+    options:
+      provider: ${nonPciControlProvider}
+    properties:
+      name: "JavaAppBuild"
+      serviceRole: ${nonPciCodeBuildRole.arn}
+      artifacts:
+        type: S3
+        location: ${nonPciControlS3.id}
+      environment:
+        computeType: BUILD_GENERAL1_SMALL
+        image: "aws/codebuild/standard:5.0"
+        type: LINUX_CONTAINER
+        privilegedMode: true
+        environmentVariables:
+          - name: "REPO_URI"
+            value: ${nonPciControllECR.repositoryUrl}
+      source:
+        type: GITHUB
+        location: "https://github.com/LTheobald/dummy-app.git"
+
+  nonPciEcsCluster:
+    type: aws:ecs:Cluster
+    properties:
+      name: non-pci-ecs-cluster
+    options:
+      provider: ${nonPciControlProvider}
+
+  nonPciControlEcsTaskDefinition:
+    type: aws:ecs:TaskDefinition
+    options:
+      provider: ${nonPciControlProvider}
+    properties:
+      family: "java-task"
+      requiresCompatibilities: ["FARGATE"]
+      networkMode: "awsvpc"
+      cpu: "256"
+      memory: "512"
+      executionRoleArn: ${nonPciCodeBuildRole.arn}
+      containerDefinitions: |
+        [
+          {
+            "name": "java-container",
+            "image": "${nonPciControllECR.repositoryUrl}:latest",
+            "memory": 512,
+            "cpu": 256,
+            "essential": true,
+            "portMappings": [
+              {
+                "containerPort": 8080,
+                "hostPort": 8080
+              }
+            ]
+          }
+        ]
+
+  # 🔹 ECS Service on Fargate
+  nonPciControlEcsService:
+    type: aws:ecs:Service
+    options:
+      provider: ${nonPciControlProvider}
+    properties:
+      name: java-ecs-service
+      cluster: ${nonPciControlEcsCluster.id}
+      taskDefinition: ${nonPciControlEcsTaskDefinition.arn}
+      desiredCount: 2
+      launchType: FARGATE
+      networkConfiguration:
+        subnets: ["subnet-abc", "subnet-xyz"]  # Replace with real subnet IDs
+        assignPublicIp: true
+
+  # Setup the PCI control plane
+  # ECR Repository
   pciControlECR:
     type: aws:ecr:Repository
     properties:
